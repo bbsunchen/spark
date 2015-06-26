@@ -175,52 +175,46 @@ private[stat] object KSTest {
     new KSTestResult(pval, ksStat, NullHypothesis.oneSampleTwoSided.toString)
   }
 
-  // Two sample methods
-  private def evalTwoSampleP(ksStat: Double, n: Long, m: Long): KSTestResult = {
-    val pval = new KolmogorovSmirnovTest().approximateP(ksStat, n.toInt, m.toInt)
-    new KSTestResult(pval, ksStat, NullHypothesis.twoSampleTwoSided.toString)
-  }
-
+  // start of 2 sample functions
   def testTwoSamples(data1: RDD[Double], data2: RDD[Double]): Double = {
     val n1 = data1.count().toDouble
     val n2 = data2.count().toDouble
     val isSample1 = true // we need a way to identify them once co-sorted
+    // combine samples identified samples
     val joinedData = data1.map(x => (x, isSample1)) ++ data2.map(x => (x, !isSample1))
+    // co sort and operate on each partition
     val localData = joinedData.sortBy(x => x).mapPartitions {
-      part => searchTwoSampleCandidates(part, n1, n2)
+      part => searchTwoSampleCandidates(part, n1, n2) // local extrema
       }.collect()
     val ksStat = searchTwoSampleStatistic(localData, n1 * n2) // result: global extreme
     ksStat
     // evalTwoSampleP(ksStat, n1.toLong, n2.toLong)
   }
 
-  // not sure if we want to break this up into 2 functinos how we did with 1 sample??
-  // we need to keep track of more info here...so the 2 tasks might be best combined
-  private def searchTwoSampleCandidates(partData: Iterator[(Double, Boolean)],
+  // TODO: not sure if we want to break this up into 2 functions how we did with 1 sample??
+  private def searchTwoSampleCandidates(
+      partData: Iterator[(Double, Boolean)],
       n1: Double,
       n2: Double)
     : Iterator[(Double, Double, Double)] = {
-    val initAcc = (Double.MaxValue, // local minimum
-        Double.MinValue, // local maximum
-        -1.0, // index for first sample
-        -1.0, // index for second sample
-        0.0, // count of first sample
-        0.0) // count of second sample
-    val localResults = partData.foldLeft(initAcc) {
-      case ((pMin, pMax, ix1, ix2, ct1, ct2), (v, isSample1)) =>
-        if (isSample1) {
-          val cdf1 = (ix1 + 1) / n1
-          val cdf2 = Math.max(ix2, 0) / n2
-          val dist = cdf1 - cdf2
-          (Math.min(pMin, dist), Math.max(pMax, dist), ix1 + 1, ix2, ct1 + 1, ct2)
-        } else {
-          val cdf1 = Math.max(ix1, 0) / n1
-          val cdf2 = (ix2 + 1) / n2
-          val dist = cdf1 - cdf2
-          (Math.min(pMin, dist), Math.max(pMax, dist), ix1, ix2 + 1, ct1, ct2 + 1)
-        }
+    // local minimum, local maximum, index for sample1/sample2, ct for sample1/sample2
+    case class KS2Acc(min: Double, max: Double, ix1: Int, ix2: Int, ct1: Int, ct2: Int)
+    val initAcc = KS2Acc(Double.MaxValue, Double.MinValue, -1, -1, 0, 0)
+    // traverse the data in partition and calculate distances and counts
+    val results = partData.foldLeft(initAcc) {
+      case (acc: KS2Acc, (v, isSample1)) =>
+        val (add1, add2) = if (isSample1) (1, 0) else (0, 1)
+        val cdf1 = Math.max(acc.ix1 + add1, 0) / n1
+        val cdf2 = Math.max(acc.ix2 + add2, 0) / n2
+        val dist = cdf1 - cdf2
+        KS2Acc(Math.min(acc.min, dist),
+          Math.max(acc.max, dist),
+          acc.ix1 + add1,
+          acc.ix2 + add2,
+          acc.ct1 + add1,
+          acc.ct2 + add2)
     }
-    Array((localResults._1, localResults._2, localResults._3 * n2 - localResults._4 * n1)).iterator
+    Array((results.min, results.max, results.ix1 * n2 - results.ix2 * n1)).iterator
   }
 
   private def searchTwoSampleStatistic(localData: Array[(Double, Double, Double)], n: Double) = {
@@ -238,6 +232,11 @@ private[stat] object KSTest {
     results._1
   }
 
+
+  private def evalTwoSampleP(ksStat: Double, n: Long, m: Long): KSTestResult = {
+    val pval = new KolmogorovSmirnovTest().approximateP(ksStat, n.toInt, m.toInt)
+    new KSTestResult(pval, ksStat, NullHypothesis.twoSampleTwoSided.toString)
+  }
 
 
 }
