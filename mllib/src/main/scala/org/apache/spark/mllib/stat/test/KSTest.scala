@@ -203,7 +203,7 @@ private[stat] object KSTest {
     // combine identified samples
     val joinedData = data1.map(x => (x, isSample1)) ++ data2.map(x => (x, !isSample1))
     // co-sort and operate on each partition
-    val localData = joinedData.sortBy(x => x).mapPartitions { part =>
+    val localData = joinedData.sortBy { case (v, id) => v }.mapPartitions { part =>
     searchTwoSampleCandidates(part, n1, n2) // local extrema
     }.collect()
     val ksStat = searchTwoSampleStatistic(localData, n1 * n2) // result: global extreme

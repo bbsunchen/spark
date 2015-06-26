@@ -264,6 +264,21 @@ class HypothesisTestSuite extends SparkFunSuite with MLlibTestSparkContext {
     assert(result3.statistic ~== refStat3 relTol 1e-4)
     assert(result3.pValue ~== refP3 relTol 1e-4)
     assert(result3.pValue < pThreshold) // reject H0
+
+
+    // Creating 2 samples that don't overlap, so we are guaranteed to have some partitions
+    // that only include values from sample 1 and some that only include values from sample 2
+    val nonOverlap1L = (1 to n).toArray.map(_.toDouble)
+    val nonOverlap2L = (n + 1 to 2 * n).toArray.map(_.toDouble)
+    val nonOverlap1P = sc.parallelize(nonOverlap1L)
+    val nonOverlap2P = sc.parallelize(nonOverlap2L)
+
+    val result4 = Statistics.ksTest(nonOverlap1P, nonOverlap2P)
+    val refStat4 = ksTest.kolmogorovSmirnovStatistic(nonOverlap1L, nonOverlap2L)
+    val refP4 = ksTest.kolmogorovSmirnovTest(nonOverlap1L, nonOverlap2L)
+    assert(result4.statistic ~== refStat4 relTol 1e-3)
+    assert(result4.pValue ~== refP4 relTol 1e-3)
+    assert(result4.pValue < pThreshold) // reject H0
   }
 }
 
