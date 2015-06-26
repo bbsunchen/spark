@@ -216,4 +216,54 @@ class HypothesisTestSuite extends SparkFunSuite with MLlibTestSparkContext {
     // reject null hypothesis
     assert(result3.pValue < pThreshold)
   }
+
+
+  test("2 sample kolmogorov smirnov test") {
+    // Create theoretical distributions
+    val stdNormalDist = new NormalDistribution(0, 1)
+    val normalDist = new NormalDistribution(2, 3)
+    val expDist = new ExponentialDistribution(0.6)
+
+    // create data samples and parallelize
+    val n = 10000
+    // local copies
+    val sampledStdNorm1L = stdNormalDist.sample(n)
+    val sampledStdNorm2L = stdNormalDist.sample(n)
+    val sampledNormL = normalDist.sample(n)
+    val sampledExpL = expDist.sample(n)
+    // distributed
+    val sampledStdNorm1P = sc.parallelize(sampledStdNorm1L)
+    val sampledStdNorm2P = sc.parallelize(sampledStdNorm2L)
+    val sampledNormP = sc.parallelize(sampledNormL)
+    val sampledExpP = sc.parallelize(sampledExpL)
+
+    // Use apache math commons local KS test for verify calculations
+    val ksTest = new KolmogorovSmirnovTest()
+    val pThreshold = 0.05
+
+    // Comparing 2 samples from same standard normal distribution
+    val result1 = Statistics.ksTest(sampledStdNorm1P, sampledStdNorm2P)
+    val refStat1 = ksTest.kolmogorovSmirnovStatistic(sampledStdNorm1L, sampledStdNorm2L)
+    val refP1 = ksTest.kolmogorovSmirnovTest(sampledStdNorm1L, sampledStdNorm2L)
+    assert(result1.statistic ~== refStat1 relTol 1e-4)
+    assert(result1.pValue ~== refP1 relTol 1e-4)
+    assert(result1.pValue > pThreshold) // accept H0
+
+    // Comparing 2 samples from different normal distributions
+    val result2 = Statistics.ksTest(sampledStdNorm1P, sampledNormP)
+    val refStat2 = ksTest.kolmogorovSmirnovStatistic(sampledStdNorm1L, sampledNormL)
+    val refP2 = ksTest.kolmogorovSmirnovTest(sampledStdNorm1L, sampledNormL)
+    assert(result2.statistic ~== refStat2 relTol 1e-4)
+    assert(result2.pValue ~== refP2 relTol 1e-4)
+    assert(result2.pValue < pThreshold) // reject H0
+
+    // Comparing 1 sample from normal distribution to 1 sample from exponential distribution
+    val result3 = Statistics.ksTest(sampledNormP, sampledExpP)
+    val refStat3 = ksTest.kolmogorovSmirnovStatistic(sampledNormL, sampledExpL)
+    val refP3 = ksTest.kolmogorovSmirnovTest(sampledNormL, sampledExpL)
+    assert(result3.statistic ~== refStat3 relTol 1e-4)
+    assert(result3.pValue ~== refP3 relTol 1e-4)
+    assert(result3.pValue < pThreshold) // reject H0
+  }
 }
+
