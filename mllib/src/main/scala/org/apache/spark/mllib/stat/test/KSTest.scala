@@ -36,6 +36,7 @@ private[stat] object KSTest {
   object NullHypothesis extends Enumeration {
     type NullHypothesis = Value
     val oneSampleTwoSided = Value("Sample follows theoretical distribution.")
+    val twoSampleTwoSided = Value("Both samples follow the same distribution.")
   }
 
   /**
@@ -173,5 +174,71 @@ private[stat] object KSTest {
     val pval = 1 - new KolmogorovSmirnovTest().cdf(ksStat, n.toInt)
     new KSTestResult(pval, ksStat, NullHypothesis.oneSampleTwoSided.toString)
   }
+
+  // Two sample methods
+  private def evalTwoSampleP(ksStat: Double, n: Long, m: Long): KSTestResult = {
+    val pval = new KolmogorovSmirnovTest().approximateP(ksStat, n.toInt, m.toInt)
+    new KSTestResult(pval, ksStat, NullHypothesis.twoSampleTwoSided.toString)
+  }
+
+  def testTwoSamples(data1: RDD[Double], data2: RDD[Double]): Double = {
+    val n1 = data1.count().toDouble
+    val n2 = data2.count().toDouble
+    val isSample1 = true // we need a way to identify them once co-sorted
+    val joinedData = data1.map(x => (x, isSample1)) ++ data2.map(x => (x, !isSample1))
+    val localData = joinedData.sortBy(x => x).mapPartitions {
+      part => searchTwoSampleCandidates(part, n1, n2)
+      }.collect()
+    val ksStat = searchTwoSampleStatistic(localData, n1 * n2) // result: global extreme
+    ksStat
+    // evalTwoSampleP(ksStat, n1.toLong, n2.toLong)
+  }
+
+  // not sure if we want to break this up into 2 functinos how we did with 1 sample??
+  // we need to keep track of more info here...so the 2 tasks might be best combined
+  private def searchTwoSampleCandidates(partData: Iterator[(Double, Boolean)],
+      n1: Double,
+      n2: Double)
+    : Iterator[(Double, Double, Double)] = {
+    val initAcc = (Double.MaxValue, // local minimum
+        Double.MinValue, // local maximum
+        -1.0, // index for first sample
+        -1.0, // index for second sample
+        0.0, // count of first sample
+        0.0) // count of second sample
+    val localResults = partData.foldLeft(initAcc) {
+      case ((pMin, pMax, ix1, ix2, ct1, ct2), (v, isSample1)) =>
+        if (isSample1) {
+          val cdf1 = (ix1 + 1) / n1
+          val cdf2 = Math.max(ix2, 0) / n2
+          val dist = cdf1 - cdf2
+          (Math.min(pMin, dist), Math.max(pMax, dist), ix1 + 1, ix2, ct1 + 1, ct2)
+        } else {
+          val cdf1 = Math.max(ix1, 0) / n1
+          val cdf2 = (ix2 + 1) / n2
+          val dist = cdf1 - cdf2
+          (Math.min(pMin, dist), Math.max(pMax, dist), ix1, ix2 + 1, ct1, ct2 + 1)
+        }
+    }
+    Array((localResults._1, localResults._2, localResults._3 * n2 - localResults._4 * n1)).iterator
+  }
+
+  private def searchTwoSampleStatistic(localData: Array[(Double, Double, Double)], n: Double) = {
+    val initAcc = (Double.MinValue, 0.0)
+    // adjust differences based on the # of elements preceding it, which should provide
+    // the correct distance between the 2 ECDFs
+    val results = localData.foldLeft(initAcc) {
+      case ((prevMax, prevCt), (minCand, maxCand, ct)) =>
+        val adjConst = prevCt / n
+        val dist1 = Math.abs(minCand + adjConst)
+        val dist2 = Math.abs(maxCand + adjConst)
+        val maxVal = Array(prevMax, dist1, dist2).max
+        (maxVal, prevCt + ct)
+    }
+    results._1
+  }
+
+
+
 }
 
