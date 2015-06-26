@@ -179,4 +179,15 @@ object Statistics {
   def ksTest(data: RDD[Double], name: String): KSTestResult = {
     KSTest.testOneSample(data, name)
   }
+
+  /**
+   * Perform a 2 sample, 2 sided Kolmogorov Smirnov test for probability distribution equality
+   * The null hypothesis corresponds to both samples coming from the same distribution
+   * @param data1 `RDD[Double]` first sample of data
+   * @param data2 `RDD[Double]` second sample of data
+   * @return KSTestResult object containing test statistic, p-value, and null hypothesis
+   */
+  def ksTest(data1: RDD[Double], data2: RDD[Double]): KSTestResult = {
+    KSTest.testTwoSamples(data1, data2)
+  }
 }
