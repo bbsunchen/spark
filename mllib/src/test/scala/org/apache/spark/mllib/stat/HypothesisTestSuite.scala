@@ -264,8 +264,7 @@ class HypothesisTestSuite extends SparkFunSuite with MLlibTestSparkContext {
     assert(result3.statistic ~== refStat3 relTol 1e-4)
     assert(result3.pValue ~== refP3 relTol 1e-4)
     assert(result3.pValue < pThreshold) // reject H0
-
-
+    
     // Creating 2 samples that don't overlap, so we are guaranteed to have some partitions
     // that only include values from sample 1 and some that only include values from sample 2
     val nonOverlap1L = (1 to n).toArray.map(_.toDouble)
@@ -281,4 +280,3 @@ class HypothesisTestSuite extends SparkFunSuite with MLlibTestSparkContext {
     assert(result4.pValue < pThreshold) // reject H0
   }
 }
-
