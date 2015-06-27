@@ -42,6 +42,9 @@ import org.apache.spark.rdd.RDD
  * we can collect and operate locally. Locally, we can now adjust each distance by the appropriate
  * constant (the cumulative sum of # of elements in the prior partitions divided by the data set
  * size). Finally, we take the maximum absolute value, and this is the statistic.
+ * The approach is effectively the same in the 2-sample variant, with the difference that now we
+ * must keep track of separate counters for the number of elements coming from each sample in
+ * each partition, so that we can appropriately adjust once we collect all candidate extremes.
  */
 private[stat] object KSTest {
 
